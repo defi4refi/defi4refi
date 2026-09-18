@@ -1,37 +1,57 @@
-# defi4refi
+# defi4refi lead pipeline
 
-Free protocol engineering for regenerative-finance projects — funded by public donations, delivered as open source.
+ClickHouse-backed lead engine: discover → resolve → enrich → score → queue → outreach.
 
-## What this is
+## Current state
 
-Regenerative-finance (ReFi) projects have world-class vision and no engineering budget. defi4refi is a public-goods development studio: supporters fund the studio, and the studio designs and ships DeFi protocol codebases free to selected ReFi teams — staking systems, community treasuries, bonding markets, governance.
-
-Donations go into a Colorado LLC. Donors get nothing back except a collectible Artifact (NFT) — patronage of a public good, not a service sale. Delivered code is open source; client teams deploy and operate their own contracts. We ship audit-ready, not audited.
-
-## What we deliver
-
-| Service | What it is |
+| Metric | Count |
 |---|---|
-| Design sprint | Tokenomics + architecture doc, threat model, launch roadmap |
-| Protocol-in-a-box | Token, staking, bonds, treasury, governance — adapted from contracts already live in production on Base |
-| dApp frontend | Staking/bonds/dashboard UI with wallet stack |
-| Advisory | Architecture + audit-prep reviews |
+| raw_leads | 92,816 rows / 37 sources |
+| orgs (entity-resolved) | 38,596 (571+ cross-source clusters) |
+| orgs with funding $ | 12,108 (USASpending, OP cycles, Filecoin ProPGF, 990s, Giveth, World Bank, OC, hypercert sales, self-reported) |
+| contacts | 2,723 (898 MX-verified emails, 1,135 twitter, 232 github) |
+| outreach_queue | 344 contact-ready (score≥35, verified contact, not contacted) |
+| signals | 483 fresh triggers (karma/giveth/hypercerts/coingecko diffs) |
+| llm_scores | ~273 orgs scored via laptop Ollama |
 
-Agent-assisted delivery with human review on every money path: ~10–20 review-hours per build vs. a $50–150k agency quote. Target: $6–10k of funding per delivered codebase, 2–3 engagements at a time.
+## Tables
 
-## How it's funded
+`raw_leads` · `orgs` · `lead_org_map` · `funding_events` · `contacts` · `org_github` · `signals` · `llm_scores` · `outreach_log` · `suppression` · views: `v_scored`, `outreach_queue`
 
-- **Artizen (primary):** Artifact sales + sponsor match funds + cash prizes
-- **Plus:** Giveth, Octant, Gitcoin campaigns, direct crypto, and hypercerts per delivery for retroactive funding
+## Scripts (`scripts/`)
 
-## Repo contents
+| Script | Role |
+|---|---|
+| `build_leads.py` | original multi-source fetch |
+| `fetch_karma.py` | Karma GAP paginator |
+| `load_extra_sources.py` | github topics, celo, dexscreener, ungc |
+| `load_registries.py` | ProPublica, WorldBank, OpenCollective, grants.gov (+ReliefWeb gated) |
+| `load_bulk.py` | ACNC CSV, Brønnøysund API |
+| `load_scale.py` | **USAspending** env agencies, OC-all, Giveth-all, ProPublica-broad |
+| `load_portfolios.py` | VC portfolio scrapes (JS-gated → needs Firecrawl) |
+| `resolve_entities.py` | union-find entity resolution → orgs/map |
+| `funding_amounts.py` | promote real $ to funding_events |
+| `enrich.py` | website email scrape + github API |
+| `verify_github.py` | MX email verify + github org HTML scrape |
+| `llm_score.py` | Ollama relevance pass → llm_scores |
+| `diff_signals.py` | multi-source weekly diff → signals |
+| `governor.py` | queue-depth check + escalation ladder |
+| `score.sql` / `outreach_queue.sql` | scoring + queue views |
 
-- `docs/` — one-pager and pitch materials
-- `data/leads.csv` — lead database of grant-funded ReFi/environmental organizations (Artizen S7, Giveth, Karma GAP, CoinGecko eco category, curated orgs)
-- `scripts/` — lead harvesting/enrichment pipelines (Karma GAP API, Giveth GraphQL, etc.)
+## Cron
 
-## The funnel
+```cron
+0 4 * * 1 cd ~/CascadeProjects/defi4refi && python3 scripts/diff_signals.py && python3 scripts/governor.py
+```
 
-`DISCOVER → CONTACT → CONVERSE → INTAKE → REVIEW → SCAFFOLD`
+## Remaining bulk sources (path to 100k funded)
 
-Agent discovers and scores organizations → human-approved outreach → intake on the website → agent-reviewed submissions → scaffolded starter repo on Radicle/GitHub.
+Blocked/gated today, need retry or manual download:
+- UK Charity Commission register bulk (site 502'd — monthly file)
+- Canada CRA T3010, CORDIS bulk, 360Giving datastore, EU FTS, India NGO Darpan
+- ReliefWeb (needs approved appname), Toucan subgraph (free Graph key), Farcaster (Neynar key)
+- VC portfolio spiders need Firecrawl (JS pages)
+
+## Output
+
+`data/top300.csv` — ranked orgs w/ funding$, recency, LLM regen/need + reason, contacts, why-breakdown.

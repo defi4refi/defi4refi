@@ -179,9 +179,9 @@ except Exception as e:
 # ---------- 3f. Climate Week NYC event hosts (scraped listing page) ----------
 try:
     h = open("/tmp/cwnyc.html").read()
-    for attrs, body in re.findall(r'<article class="event-card ([^"]*)"(.*?)>(.*?)</article>', h, re.S):
-        name = re.search(r'data-name="([^"]+)"', body)
-        summ = re.search(r'data-summary="([^"]*)"', body)
+    for attrs, attrrest, body in re.findall(r'<article class="event-card ([^"]*)"(.*?)>(.*?)</article>', h, re.S):
+        name = re.search(r'data-name="([^"]+)"', attrrest)
+        summ = re.search(r'data-summary="([^"]*)"', attrrest)
         themes = " ".join(sorted(set(re.findall(r'theme-(\w+)', attrs))))
         add((name.group(1) if name else "?").replace("&amp;", "&"),
             "climateweek-nyc", category="climate event host (2026)",
@@ -193,7 +193,7 @@ except Exception as e:
 # ---------- 3g. UN Global Compact participants (env-relevant sectors slice) ----------
 UNGC_SECTORS = re.compile(r"renewable|environment|energy|forestr|agricultur|conservation|recycl|water|solar|wind|carbon|climate|software|nature|sustainab|non-?profit|foundation", re.I)
 try:
-    for page in range(1, 31):
+    for page in range(1, 61):
         req = urllib.request.Request(
             f"https://unglobalcompact.org/what-is-gc/participants/search?page={page}",
             headers={"User-Agent": "Mozilla/5.0"})

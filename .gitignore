@@ -5,3 +5,5 @@ dist/
 *.jsonl
 __pycache__/
 .venv/
+contacts.jsonl.gz
+snapshot-private/
