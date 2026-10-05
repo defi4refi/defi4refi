@@ -12,7 +12,7 @@ Runs weekly (cron) or on-demand:
 """
 import json, os, subprocess, sys, urllib.request, urllib.parse
 
-CH = "http://localhost:8123/"
+CH = os.environ.get("CH_URL", "http://localhost:8123/")
 WEEKLY_BATCH = int(os.environ.get("WEEKLY_BATCH", "100"))
 MIN_DEPTH = 3 * WEEKLY_BATCH
 

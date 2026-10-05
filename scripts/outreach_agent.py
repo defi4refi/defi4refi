@@ -15,9 +15,12 @@ Infrastructure:
 """
 import json, os, sys, urllib.request, urllib.parse, hashlib
 
-CH = "http://localhost:8123/"
-OLLAMA = "http://localhost:11434/api/generate"
-MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1-8b-tools-32k")
+CH = os.environ.get("CH_URL", "http://localhost:8123/")
+# LLM_PROVIDER: "ollama" (default, /api/generate) or "openai" (OpenAI-compatible
+# /v1/chat/completions — e.g. freelm-gateway http://127.0.0.1:8081/v1 on the VPS)
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "ollama")
+LLM_URL = os.environ.get("LLM_URL", "http://localhost:11434")
+MODEL = os.environ.get("LLM_MODEL", os.environ.get("OLLAMA_MODEL", "llama3.1-8b-tools-32k"))
 
 # ---- channel priority: empirical > hardcoded fallback ----
 # At rest, channel_perf table holds empirical rates. On first run (empty table),
@@ -123,10 +126,18 @@ def ins_var(rows):
         ch_q("INSERT INTO defi4refi.draft_variant_log FORMAT JSONEachRow",
              data="\n".join(json.dumps(r) for r in rows))
 
-# ---- Ollama LLM ----
+# ---- LLM (ollama native or OpenAI-compatible) ----
 def llm(prompt, fmt_json=True, n=120):
     try:
-        req = urllib.request.Request(OLLAMA, data=json.dumps({
+        if LLM_PROVIDER == "openai":
+            req = urllib.request.Request(LLM_URL.rstrip("/") + "/chat/completions",
+                data=json.dumps({"model": MODEL,
+                                 "messages": [{"role": "user", "content": prompt}],
+                                 "temperature": 0.25, "max_tokens": n}).encode(),
+                headers={"Content-Type": "application/json"})
+            r = json.loads(urllib.request.urlopen(req, timeout=90).read().decode())
+            return r["choices"][0]["message"]["content"]
+        req = urllib.request.Request(LLM_URL.rstrip("/") + "/api/generate", data=json.dumps({
             "model": MODEL, "prompt": prompt, "stream": False,
             "format": "json" if fmt_json else None,
             "options": {"temperature": 0.25, "num_predict": n}}).encode())

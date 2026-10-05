@@ -33,10 +33,25 @@ Files (all in /home/terex/CascadeProjects/defi4refi/scripts/):
 import json, os, subprocess, sys, time, urllib.request, urllib.parse
 from datetime import datetime, timezone
 
-# --- paths ---
-LAB = "/home/terex/CascadeProjects/defi4refi/scripts"
+# --- paths --- (defaults to this file's dir; override with DEFI4REFI_DIR)
+LAB = os.environ.get("DEFI4REFI_DIR", os.path.dirname(os.path.abspath(__file__)))
 AGENT = os.path.join(LAB, "outreach_agent.py")
 SEND = os.path.join(LAB, "outreach_send.py")
+# Hermes binary on the VPS — when present, messaging routes through `hermes send`
+HERMES = os.environ.get("HERMES_BIN", "hermes")
+
+def have_hermes():
+    try:
+        return subprocess.run([HERMES, "status"], capture_output=True, timeout=10).returncode == 0
+    except Exception:
+        return False
+
+def hermes_send(target, text):
+    """Send via Hermes gateway: target like 'telegram:-100xxxx' or 'telegram:@handle'."""
+    r = subprocess.run([HERMES, "send", "-t", target, text],
+                       capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        raise RuntimeError(f"hermes send failed: {r.stderr[:120]}")
 
 # --- load scripts/.env (gitignored) into environment ---
 _env = os.path.join(LAB, ".env")
@@ -53,7 +68,11 @@ TOP_N = int(os.environ.get("OUTREACH_TOP_N", "40"))
 MAX_SEND = int(os.environ.get("OUTREACH_MAX_SEND_PER_CHANNEL", "5"))
 INTERVAL = int(os.environ.get("OUTREACH_INTERVAL_MIN", "360"))
 
-CH = "http://localhost:8123/"
+CH = os.environ.get("CH_URL", "http://localhost:8123/")
+# LLM_PROVIDER: "ollama" (default) or "openai" (OpenAI-compatible /v1, e.g. freelm)
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "ollama")
+LLM_URL = os.environ.get("LLM_URL", "http://localhost:11434")
+LLM_MODEL = os.environ.get("LLM_MODEL", os.environ.get("OLLAMA_MODEL", "llama3.1-8b-tools-32k"))
 
 def q(sql, data=None):
     req = urllib.request.Request(
@@ -68,15 +87,21 @@ def rows_json(sql):
 
 def llm(prompt, fmt_json=True, n=200):
     try:
-        req = urllib.request.Request(
-            "http://localhost:11434/api/generate",
+        if LLM_PROVIDER == "openai":
+            req = urllib.request.Request(LLM_URL.rstrip("/") + "/chat/completions",
+                data=json.dumps({"model": LLM_MODEL,
+                                 "messages": [{"role": "user", "content": prompt}],
+                                 "temperature": 0.3, "max_tokens": n}).encode(),
+                headers={"Content-Type": "application/json"})
+            r = json.loads(urllib.request.urlopen(req, timeout=90).read().decode())
+            return r["choices"][0]["message"]["content"]
+        req = urllib.request.Request(LLM_URL.rstrip("/") + "/api/generate",
             data=json.dumps({
-                "model": OLLAMA_MODEL, "prompt": prompt, "stream": False,
+                "model": LLM_MODEL, "prompt": prompt, "stream": False,
                 "format": "json" if fmt_json else None,
                 "options": {"temperature": 0.3, "num_predict": n}
             }).encode(),
-            headers={"Content-Type": "application/json"}
-        )
+            headers={"Content-Type": "application/json"})
         return json.loads(urllib.request.urlopen(req, timeout=90).read().decode()).get("response", "")
     except Exception as e:
         print(f"  [llm error] {e}")
@@ -144,7 +169,8 @@ def step_send():
     bsky = bool(os.environ.get("BSKY_HANDLE") and os.environ.get("BSKY_APP_PASSWORD"))
     gh = bool(os.environ.get("GITHUB_TOKEN"))
     smtp = all(os.environ.get(k) for k in ["SMTP_HOST", "SMTP_USER", "SMTP_PASS", "SMTP_FROM"])
-    telegram = bool(os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID"))
+    telegram = bool(os.environ.get("TELEGRAM_CHAT_ID")) and (
+        bool(os.environ.get("TELEGRAM_BOT_TOKEN")) or have_hermes())
 
     channels_ready = []
     if bsky: channels_ready.append("bluesky")
@@ -264,6 +290,8 @@ Sent automatically by the defi4refi outreach pipeline.
         elif ch == "telegram" and telegram:
             # Telegram bots can't DM arbitrary users — TELEGRAM_CHAT_ID is the
             # defi4refi group; post an operator summary of this cycle instead.
+            # On the VPS this goes through `hermes send` (gateway owns the bot
+            # token); locally it falls back to the raw Bot API.
             try:
                 queued = rows_json("""
                     SELECT count() AS n FROM defi4refi.drafts
@@ -273,12 +301,15 @@ Sent automatically by the defi4refi outreach pipeline.
                 text = (f"defi4refi outreach cycle: {queued} approved drafts in queue.\n"
                         f"New member questions welcome — submit ideas via "
                         f"https://github.com/TerexitariusStomp")
-                req = urllib.request.Request(
-                    f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/sendMessage",
-                    data=json.dumps({"chat_id": os.environ["TELEGRAM_CHAT_ID"], "text": text}).encode(),
-                    headers={"Content-Type": "application/json"}
-                )
-                urllib.request.urlopen(req, timeout=10)
+                if have_hermes():
+                    hermes_send(f"telegram:{os.environ['TELEGRAM_CHAT_ID']}", text)
+                else:
+                    req = urllib.request.Request(
+                        f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/sendMessage",
+                        data=json.dumps({"chat_id": os.environ["TELEGRAM_CHAT_ID"], "text": text}).encode(),
+                        headers={"Content-Type": "application/json"}
+                    )
+                    urllib.request.urlopen(req, timeout=10)
                 print("    telegram: cycle summary posted to defi4refi group")
             except Exception as e:
                 print(f"    telegram fail: {str(e)[:80]}")

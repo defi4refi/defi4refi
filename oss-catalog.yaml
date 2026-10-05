@@ -1,0 +1,317 @@
+# oss-catalog.yaml — canonical inventory of reusable OSS for defi4refi builds
+#
+# Policy (per project owner):
+#   - All license classes usable: permissive, copyleft (GPL/AGPL/LGPL/MPL),
+#     and source-available (BUSL/SSPL/BSL). Copyleft is fine; source-available
+#     is treated like copyleft — obligations recorded, nothing banned.
+#   - Custom-authored code must be <5% of delivered LOC per repo.
+#     Vendor/fork from this catalog first; write new code only where no
+#     catalog component fits. See docs/CUSTOM-CODE-AUDIT.md and
+#     tools/custom-code.sh.
+#   - Every delivered repo must regenerate docs/OSS-LICENSES.md listing
+#     vendored components with license + obligations.
+#
+# class values: permissive | copyleft | source-available
+# tier: T1 = protocol contracts, T2 = dApp frontend, T3 = adjacent modules,
+#       OPS = studio infrastructure, LEADS = intake/data
+
+policy:
+  custom_code_cap_pct: 5
+  vendored_markers: [lib/, vendor/, upstream/, third_party/, node_modules/, .venv/]
+  copyleft_allowed: true
+  source_available_allowed: true  # BUSL/SSPL/BSL treated like copyleft; obligations recorded
+  banned: []
+
+tier1_contracts:
+  # --- Owned stack ---
+  - repo: defi4refi/rooted-finance
+    path: ~/CascadeProjects/rooted-finance/contracts/src
+    license: AGPL-3.0
+    class: copyleft
+    modules: [RootsToken, RootsStaking, wstROOTS, TreasuryValuation, RootsBondPricer,
+              RootsInverseBond, Bucky-stablecoin, RootsCollateralManager,
+              ReferralRegistry, MultisigGuard, RootsCircuitBreaker, RootsDeployer]
+    tier: T1
+    use: "Primary T1 template — full protocol-in-a-box (token, staking, bonds, treasury, stablecoin, governance glue)"
+    notes: "Owned AGPL — derived client work inherits AGPL; publish source (aligned with open-source delivery anyway)."
+
+  - repo: defi4refi/abyayala
+    path: ~/CascadeProjects/abyayala
+    license: AGPL-3.0
+    class: copyleft
+    modules: []
+    tier: T1
+    use: "Secondary contract patterns — check src/ for regen-specific modules"
+    notes: "Owned AGPL."
+
+  - repo: localchimera
+    path: ~/Documents/docker/localchimera/contracts
+    license: custom-copyright
+    class: copyleft
+    modules: []
+    tier: T1
+    use: "Cashu/ecash + Casper experiments — reuse only for ecash-adjacent asks"
+    notes: "Owned; no standard OSS license — treat as internal code, no external obligations."
+
+  # --- Vendored solidity libs (rooted-finance/contracts/lib, submodules) ---
+  - repo: OpenZeppelin/openzeppelin-contracts
+    path: contracts/lib/openzeppelin (+ openzeppelin-v4, oz-v4.8.0, oz-v5.3.0, openzeppelin-contracts-upgradeable)
+    license: MIT
+    class: permissive
+    modules: [ERC20, AccessControl, ReentrancyGuard, Pausable, Governor, UUPS proxies, SafeERC20]
+    tier: T1
+    use: "Base primitives for everything"
+    notes: "Keep copyright line."
+
+  - repo: OlympusDAO/olympus-v3
+    path: contracts/lib/olympus-v3
+    license: AGPL-3.0
+    class: copyleft
+    modules: [Kernel, Modules, Policies, PRICE oracle, Treasury]
+    tier: T1
+    use: "Kernel/Policy architecture for treasury-backed protocols"
+    notes: "Derived work AGPL — publish source."
+
+  - repo: Bond-Protocol/bond-contracts
+    path: contracts/lib/bond-protocol
+    license: AGPL-3.0
+    class: copyleft
+    modules: [Bond market, teller, auctioneer]
+    tier: T1
+    use: "Bond/purchase mechanics"
+
+  - repo: makerdao/dss
+    path: contracts/lib/dss
+    license: AGPL-3.0-or-later
+    class: copyleft
+    modules: [vat, cat, flip, jug, pot, OSM — CDP/stablecoin core]
+    tier: T1
+    use: "Stablecoin/CDP systems (Bucky pattern)"
+
+  - repo: Uniswap/v2-core + v2-periphery
+    path: contracts/lib/v2-core, contracts/lib/v2-periphery
+    license: GPL-3.0-or-later
+    class: copyleft
+    modules: [AMM pair, router]
+    tier: T1
+    use: "AMM liquidity for token launches"
+
+  - repo: Uniswap/v4-hooks-public
+    path: contracts/lib/v4-hooks-public
+    license: MIT
+    class: permissive
+    modules: [v4 hook templates]
+    tier: T1
+    use: "Custom AMM hook builds"
+    notes: "v4-core itself is BUSL-1.1 — see source-available entry below."
+
+  - repo: Uniswap/v4-core
+    license: BUSL-1.1
+    class: source-available
+    modules: [PoolManager, v4 AMM core]
+    tier: T1
+    use: "v4 pool dependency for hook builds"
+    notes: "BUSL-1.1 converts to GPL-2.0-or-later at change date (per repo LICENSE). Allowed per policy; record obligations."
+
+  - repo: OpenZeppelin/uniswap-hooks
+    path: contracts/lib/uniswap-hooks
+    license: MIT
+    class: permissive
+    modules: [BaseCustomCurve, BaseDynamicFee, BaseHook]
+    tier: T1
+
+  - repo: lido-finance/core
+    path: contracts/lib/core
+    license: GPL-3.0
+    class: copyleft
+    modules: [stETH rebasing patterns, withdrawal queue]
+    tier: T1
+    use: "Rebasing-token reference (stROOTS pattern derives from it)"
+
+  - repo: balancer/balancer-v2-monorepo
+    path: contracts/lib/balancer-v2-monorepo
+    license: GPL-3.0-only
+    class: copyleft
+    modules: [Vault, weighted/stable pools]
+    tier: T1
+    use: "Multi-asset pool patterns"
+
+  - repo: pendle-finance/pendle-core-v2-public + pendle-sy
+    path: contracts/lib/pendle-core-v2-public, contracts/lib/pendle-sy
+    license: mixed AGPL-3.0 / GPL-3.0-or-later / BUSL-1.1
+    class: copyleft
+    modules: [StandardizedYield (SY), PT/YT core]
+    tier: T1
+    use: "Yield-tokenization modules"
+    notes: "Mixed licenses per SPDX headers — check each file; BUSL parts noted."
+
+  - repo: yearn/tokenized-strategy
+    path: contracts/lib/tokenized-strategy
+    license: AGPL-3.0
+    class: copyleft
+    modules: [BaseTokenizedStrategy]
+    tier: T1
+    use: "Yield strategy template"
+
+  - repo: morpho-org/vault-v2
+    path: contracts/lib/vault-v2
+    license: GPL-2.0-or-later
+    class: copyleft
+    modules: [MetaMorpho-style vault]
+    tier: T1
+    use: "Curated vault / allocator patterns"
+
+  - repo: sparkdotfi/spark-psm
+    path: contracts/lib/spark-psm
+    license: AGPL-3.0
+    class: copyleft
+    modules: [Peg Stability Module]
+    tier: T1
+    use: "Stablecoin peg defense"
+
+  - repo: gmx-io/gmx-contracts
+    path: contracts/lib/gmx-contracts
+    license: MIT
+    class: permissive
+    modules: [Perp/GLP references, oracle adapters]
+    tier: T1
+
+  - repo: reserve-protocol/* (reserve-index-dtf, trusted-fillers, reserve-governor)
+    path: contracts/lib/reserve-index-dtf, contracts/lib/trusted-fillers, contracts/lib/reserve-governor
+    license: MIT
+    class: permissive
+    modules: [Index DTFs, CoW fillers, governor]
+    tier: T1
+    use: "Index baskets + governance + CoW swap integration"
+
+  - repo: euler-xyz/euler-price-oracle
+    path: contracts/lib/euler-price-oracle
+    license: GPL-2.0-or-later
+    class: copyleft
+    modules: [ERC-7726 price oracle abstraction]
+    tier: T1
+    use: "Fail-closed oracle pattern"
+
+  - repo: PaulRBerg/prb-math
+    path: contracts/lib/prb-math
+    license: MIT
+    class: permissive
+    modules: [fixed-point math]
+    tier: T1
+
+  - repo: pcaversaccio/createx
+    path: contracts/lib/createx
+    license: AGPL-3.0
+    class: copyleft
+    modules: [CREATE2/CREATE3 deployer]
+    tier: T1
+    use: "Deterministic cross-chain deploys"
+
+  - repo: foundry-rs/forge-std
+    path: contracts/lib/forge-std
+    license: MIT OR Apache-2.0
+    class: permissive
+    modules: [test/script toolkit]
+    tier: T1
+    use: "Test infra only — not shipped"
+
+tier2_frontend:
+  - repo: defi4refi/rooted-finance frontend
+    path: ~/CascadeProjects/rooted-finance/frontend
+    license: AGPL-3.0
+    class: copyleft
+    modules: [React19+Vite7+wagmi2+Tailwind4 scaffold, bond/stake/treasury/referral modules, ABIs as const]
+    tier: T2
+    use: "T2 template — clone, rebrand via OKLCH tokens, drop unused modules"
+  - repo: defi4refi/regen-atlas
+    path: ~/Documents/docker/regen-atlas
+    license: MIT
+    class: permissive
+    tier: T2
+    use: "Map/atlas UI patterns"
+  - repo: defi4refi/village-os
+    path: ~/Documents/docker/village-os
+    license: MIT
+    class: permissive
+    tier: T2
+    use: "Community/admin UI patterns"
+
+tier3_modules:
+  - repo: Rooted monorepo
+    path: ~/Documents/Rooted
+    license: AGPL-3.0
+    class: copyleft
+    tier: T3
+    use: "Workers, lexicons, appreciation pipeline (license-report.json already exists)"
+  - repo: rooted-wallet-extension
+    path: ~/rooted-wallet-extension
+    license: none-on-disk
+    class: copyleft
+    tier: T3
+    use: "Wallet-side integrations — owned code, confirm license before reuse"
+    notes: "No LICENSE file — owned internal code; add AGPL header on reuse or keep private."
+
+gapfillers:
+  # Candidate external repos — clone to /root/defi4refi/templates/ on VPS on demand;
+  # add license line before first use.
+  - repo: allo-protocol/allo-v2
+    license: AGPL-3.0
+    class: copyleft
+    tier: T3
+    use: "Quadratic funding / grant-allocation asks"
+  - repo: Banquet-brewing/juice-contracts-v4 (juicebox)
+    license: MIT
+    class: permissive
+    tier: T3
+    use: "Treasury/fundraising asks"
+  - repo: safe-global/safe-smart-account
+    license: LGPL-3.0
+    class: copyleft
+    tier: T3
+    use: "Multisig — prefer pointing at deployed Safe singletons rather than redeploying"
+  - repo: Hats-Protocol/hats-protocol
+    license: MIT
+    class: permissive
+    tier: T3
+    use: "Role/delegation asks"
+  - repo: hypercerts-org/hypercerts
+    license: Apache-2.0
+    class: permissive
+    tier: T3
+    use: "Impact certificate asks (EAS attestations)"
+  - repo: ethereum-attestation-service/eas-contracts
+    license: see-repo
+    class: permissive
+    tier: T3
+    use: "Attestation schemas — usually integrate, not fork"
+  - repo: sablier-labs/*
+    license: BUSL-1.1 / GPL
+    class: source-available
+    tier: T3
+    use: "Streaming payments — check per-repo license before use"
+  - repo: OpenZeppelin/openzeppelin-contracts Governor
+    license: MIT
+    class: permissive
+    tier: T1
+    use: "DAO governance asks"
+
+studio_ops:
+  - repo: defi4refi/defi4refi (this repo)
+    license: AGPL-3.0
+    class: copyleft
+    tier: OPS
+    use: "Lead pipeline + intake"
+  - repo: NousResearch/hermes-agent (fork on VPS)
+    license: MIT
+    class: permissive
+    tier: OPS
+    use: "Messaging/build agent"
+  - repo: clickhouse/clickhouse-server (docker)
+    license: Apache-2.0
+    class: permissive
+    tier: OPS
+  - repo: ollama, foundry, freelm-gateway, g4f
+    license: MIT / Apache-2.0 / mixed
+    class: permissive
+    tier: OPS
+    notes: "g4f is a gray-zone provider shim — already running on VPS; flag for review if studio goes commercial."

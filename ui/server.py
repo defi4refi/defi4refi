@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Read-only lead browser: static UI + /api proxy to ClickHouse."""
-import json, re, urllib.parse, urllib.request
+import json, os, re, urllib.parse, urllib.request
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
-CH = "http://localhost:8123/"
+CH = os.environ.get("CH_URL", "http://localhost:8123/")
 ROOT = Path(__file__).parent
 PORT = 8471
 

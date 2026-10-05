@@ -6,7 +6,7 @@ Inbound: POST /inbound on :8899 -> replies table (Postal inbound route target)."
 import json, os, re, urllib.request, urllib.parse, threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-CH = "http://localhost:8123/"
+CH = os.environ.get("CH_URL", "http://localhost:8123/")
 
 # load scripts/.env (gitignored) if present
 _env = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
