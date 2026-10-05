@@ -161,11 +161,14 @@ def step_send():
             FROM defi4refi.drafts
             WHERE approved = 1 AND org_id NOT IN (SELECT org_id FROM defi4refi.outreach_log)
         """)
+        # NOTE: do NOT write to outreach_log here — outreach_queue excludes any
+        # org in outreach_log, so logging would_send would silently burn the queue.
+        # Track intent via signals instead.
         for d in would_send:
             q("""
-                INSERT INTO defi4refi.outreach_log (org_id, channel, value, sent_at, status)
-                VALUES ('{}', '{}', '{}', now(), 'would_send')
-            """.format(d["org_id"], d["channel"], d["contact"]))
+                INSERT INTO defi4refi.signals (org_id, signal_type, detail)
+                VALUES ('{}', 'would_send', 'channel: {} contact: {}')
+            """.format(d["org_id"], d["channel"], d["contact"].replace("'", "''")))
         print(f"  would_send: {len(would_send)} drafts staged for next cycle with creds")
         return
 
