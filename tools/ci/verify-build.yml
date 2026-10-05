@@ -1,0 +1,72 @@
+# verify-build.yml — defi4refi per-repo verification workflow
+#
+# Copied into each new project repo as `.github/workflows/verify-build.yml`
+# by the build agent (Hermes). Runs on every push/PR:
+#   1. forge build + forge test        (if contracts/ exists)
+#   2. license obligations report      (vendored components → docs/OSS-LICENSES.md)
+#   3. custom-code gate                (tools/custom-code.sh must exit 0)
+#
+# Requires: nothing custom — GitHub-hosted runner, foundry toolchain,
+# and this repo's tools/custom-code.sh vendored at tools/custom-code.sh.
+
+name: verify-build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: forge build
+        working-directory: contracts
+        run: forge build --sizes
+        if: ${{ hashFiles('contracts/foundry.toml') != '' }}
+
+      - name: forge test
+        working-directory: contracts
+        run: forge test -vvv
+        if: ${{ hashFiles('contracts/foundry.toml') != '' }}
+
+  oss-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Custom-code gate (<5% authored LOC)
+        run: |
+          chmod +x tools/custom-code.sh
+          ./tools/custom-code.sh . | tee /tmp/custom-code-report.txt
+          ./tools/custom-code.sh . --json > /tmp/custom-code.json || true
+
+      - name: License inventory present
+        run: |
+          test -f docs/OSS-LICENSES.md || {
+            echo "::error::docs/OSS-LICENSES.md missing — every vendored component must be listed with license + obligations"
+            exit 1
+          }
+          grep -ciE "license" docs/OSS-LICENSES.md >/dev/null
+
+      - name: Upload audit artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: oss-audit
+          path: |
+            docs/OSS-LICENSES.md
+            docs/CUSTOM-CODE-AUDIT.md

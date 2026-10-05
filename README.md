@@ -27,22 +27,49 @@ landing page) → **submit an idea** via the
 
 Learning-schema tables self-provision on any `outreach_agent.py` run — no separate migration step.
 
-## Ops
+## Ops — VPS layout (primary)
 
-- **ClickHouse**: `docker start defi4refi-ch` (container `defi4refi-ch`,
-  image `clickhouse/clickhouse-server:25.7`, host port 127.0.0.1:8123).
-  Default user is open inside the container — port is loopback-only.
-- **Ollama**: `systemctl --user status ollama` (serves `llama3.1-8b-tools-32k`).
-- **Outreach cycle**: `defi4refi-outreach.timer` — `outreach_runner.py once`
-  every 6h (draft → LLM-approve → send → triage → learn → report).
-- **Inbound webhook**: `defi4refi-inbound.service` — replies endpoint on :8899.
-- **Credentials**: copy `scripts/.env.example` → `scripts/.env` (gitignored).
-  Unconfigured channels are skipped; pipeline still drafts + logs `would_send`.
-- **Lead browser**: `python3 ui/server.py` → http://localhost:8471 (needs ClickHouse).
+The pipeline is VPS-native (openhands-vps, `147.79.71.192`, repo at
+`/root/defi4refi`). Hermes on that box owns messaging + intake builds.
+
+- **ClickHouse**: docker `defi4refi-ch`, loopback-only `:8123`,
+  `--restart unless-stopped`, volume `defi4refi-ch-data`.
+- **LLM**: `scripts/.env` sets `LLM_PROVIDER=openai`,
+  `LLM_URL=http://127.0.0.1:8081/v1`, `LLM_MODEL=auto` — freelm-gateway,
+  the same provider Hermes uses (not laptop-dependent).
+- **Systemd (system units on VPS)**: `defi4refi-outreach.timer` (6h cycle),
+  `defi4refi-inbound.service` (:8899 replies webhook).
+- **Hermes**: poll-based intake via `hermes cron` job `defi4refi-intake`
+  every 2h (scans `[APPLY]` issues via `gh` — no public ingress needed);
+  webhook `github-apply` exists for when `hooks.terex.dev` DNS lands;
+  `defi4refi-digest` daily; `defi4refi-governor` weekly.
+- **Builds — GitHub-native, no templates**: each application issue produces
+  a fresh `defi4refi/<project>` repo composed from the applicant's wants.
+  Hermes vendors individual modules from `oss-catalog.yaml` (upstream URLs,
+  fetched per-build — nothing pre-cloned on the VPS), authors the glue in a
+  transient workspace, pushes, and the repo's own GitHub Action
+  (`tools/ci/verify-build.yml` → `.github/workflows/verify-build.yml`) runs
+  `forge build/test` + license + <5% custom-code gates. rooted-finance is a
+  module library, never a template.
+
+## Ops — laptop (read replica / dev)
+
+- ClickHouse `defi4refi-ch` stays as a read replica; `ui/server.py` takes
+  `CH_URL` env (e.g. `CH_URL=http://100.104.37.87:8123` via SSH tunnel:
+  `ssh -L 8123:127.0.0.1:8123 root@147.79.71.192`).
+- Local `defi4refi-*` units are user-level and can be disabled once the
+  VPS is verified.
 
 Restore from snapshot: see `data/snapshot/RESTORE.md` (POST inserts —
 `--data-binary @-` with the query as a URL param; do NOT mix `--get` +
 `--data-binary`, it silently drops the body).
+
+## OSS policy
+
+`oss-catalog.yaml` is the build menu — every reusable repo with license,
+class, obligations, tier. Copyleft and source-available allowed;
+obligations recorded. Custom code <5% everywhere — see
+`docs/OSS-LICENSES.md` + `docs/CUSTOM-CODE-AUDIT.md`.
 
 ## Scripts (`scripts/`)
 

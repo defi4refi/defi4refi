@@ -1,5 +1,11 @@
 # oss-catalog.yaml — canonical inventory of reusable OSS for defi4refi builds
 #
+# DESIGN RULE: there are NO template projects. Every client repo is composed
+# fresh from the applicant's stated wants in their GitHub issue. Entries below
+# are MODULE SOURCES — the build agent vendors individual components
+# (subtree/submodule/file-graft) from upstream URLs into the new repo.
+# Nothing is pre-cloned on the VPS; everything is fetched per-build.
+#
 # Policy (per project owner):
 #   - All license classes usable: permissive, copyleft (GPL/AGPL/LGPL/MPL),
 #     and source-available (BUSL/SSPL/BSL). Copyleft is fine; source-available
@@ -9,7 +15,9 @@
 #     catalog component fits. See docs/CUSTOM-CODE-AUDIT.md and
 #     tools/custom-code.sh.
 #   - Every delivered repo must regenerate docs/OSS-LICENSES.md listing
-#     vendored components with license + obligations.
+#     vendored components with license + obligations, and must ship
+#     .github/workflows/verify-build.yml (from tools/ci/) so GitHub Actions
+#     runs the verification — not the VPS.
 #
 # class values: permissive | copyleft | source-available
 # tier: T1 = protocol contracts, T2 = dApp frontend, T3 = adjacent modules,
@@ -23,20 +31,21 @@ policy:
   banned: []
 
 tier1_contracts:
-  # --- Owned stack ---
+  # --- Owned stack: module sources, NOT templates. Graft individual
+  #     contracts/modules into the new repo per the issue's requirements ---
   - repo: defi4refi/rooted-finance
-    path: ~/CascadeProjects/rooted-finance/contracts/src
+    url: https://github.com/defi4refi/rooted-finance
     license: AGPL-3.0
     class: copyleft
     modules: [RootsToken, RootsStaking, wstROOTS, TreasuryValuation, RootsBondPricer,
               RootsInverseBond, Bucky-stablecoin, RootsCollateralManager,
               ReferralRegistry, MultisigGuard, RootsCircuitBreaker, RootsDeployer]
     tier: T1
-    use: "Primary T1 template — full protocol-in-a-box (token, staking, bonds, treasury, stablecoin, governance glue)"
+    use: "Module library only — graft the specific contracts matching the ask (e.g. ReferralRegistry for referral asks, RootsBondPricer for bond asks); never ship the whole repo"
     notes: "Owned AGPL — derived client work inherits AGPL; publish source (aligned with open-source delivery anyway)."
 
   - repo: defi4refi/abyayala
-    path: ~/CascadeProjects/abyayala
+    url: https://github.com/defi4refi/abyayala
     license: AGPL-3.0
     class: copyleft
     modules: []
@@ -45,7 +54,7 @@ tier1_contracts:
     notes: "Owned AGPL."
 
   - repo: localchimera
-    path: ~/Documents/docker/localchimera/contracts
+    url: https://github.com/defi4refi/localchimera
     license: custom-copyright
     class: copyleft
     modules: []
@@ -55,7 +64,6 @@ tier1_contracts:
 
   # --- Vendored solidity libs (rooted-finance/contracts/lib, submodules) ---
   - repo: OpenZeppelin/openzeppelin-contracts
-    path: contracts/lib/openzeppelin (+ openzeppelin-v4, oz-v4.8.0, oz-v5.3.0, openzeppelin-contracts-upgradeable)
     license: MIT
     class: permissive
     modules: [ERC20, AccessControl, ReentrancyGuard, Pausable, Governor, UUPS proxies, SafeERC20]
@@ -64,7 +72,6 @@ tier1_contracts:
     notes: "Keep copyright line."
 
   - repo: OlympusDAO/olympus-v3
-    path: contracts/lib/olympus-v3
     license: AGPL-3.0
     class: copyleft
     modules: [Kernel, Modules, Policies, PRICE oracle, Treasury]
@@ -73,7 +80,6 @@ tier1_contracts:
     notes: "Derived work AGPL — publish source."
 
   - repo: Bond-Protocol/bond-contracts
-    path: contracts/lib/bond-protocol
     license: AGPL-3.0
     class: copyleft
     modules: [Bond market, teller, auctioneer]
@@ -81,7 +87,6 @@ tier1_contracts:
     use: "Bond/purchase mechanics"
 
   - repo: makerdao/dss
-    path: contracts/lib/dss
     license: AGPL-3.0-or-later
     class: copyleft
     modules: [vat, cat, flip, jug, pot, OSM — CDP/stablecoin core]
@@ -89,7 +94,6 @@ tier1_contracts:
     use: "Stablecoin/CDP systems (Bucky pattern)"
 
   - repo: Uniswap/v2-core + v2-periphery
-    path: contracts/lib/v2-core, contracts/lib/v2-periphery
     license: GPL-3.0-or-later
     class: copyleft
     modules: [AMM pair, router]
@@ -97,7 +101,6 @@ tier1_contracts:
     use: "AMM liquidity for token launches"
 
   - repo: Uniswap/v4-hooks-public
-    path: contracts/lib/v4-hooks-public
     license: MIT
     class: permissive
     modules: [v4 hook templates]
@@ -114,14 +117,12 @@ tier1_contracts:
     notes: "BUSL-1.1 converts to GPL-2.0-or-later at change date (per repo LICENSE). Allowed per policy; record obligations."
 
   - repo: OpenZeppelin/uniswap-hooks
-    path: contracts/lib/uniswap-hooks
     license: MIT
     class: permissive
     modules: [BaseCustomCurve, BaseDynamicFee, BaseHook]
     tier: T1
 
   - repo: lido-finance/core
-    path: contracts/lib/core
     license: GPL-3.0
     class: copyleft
     modules: [stETH rebasing patterns, withdrawal queue]
@@ -129,7 +130,6 @@ tier1_contracts:
     use: "Rebasing-token reference (stROOTS pattern derives from it)"
 
   - repo: balancer/balancer-v2-monorepo
-    path: contracts/lib/balancer-v2-monorepo
     license: GPL-3.0-only
     class: copyleft
     modules: [Vault, weighted/stable pools]
@@ -137,7 +137,6 @@ tier1_contracts:
     use: "Multi-asset pool patterns"
 
   - repo: pendle-finance/pendle-core-v2-public + pendle-sy
-    path: contracts/lib/pendle-core-v2-public, contracts/lib/pendle-sy
     license: mixed AGPL-3.0 / GPL-3.0-or-later / BUSL-1.1
     class: copyleft
     modules: [StandardizedYield (SY), PT/YT core]
@@ -146,7 +145,6 @@ tier1_contracts:
     notes: "Mixed licenses per SPDX headers — check each file; BUSL parts noted."
 
   - repo: yearn/tokenized-strategy
-    path: contracts/lib/tokenized-strategy
     license: AGPL-3.0
     class: copyleft
     modules: [BaseTokenizedStrategy]
@@ -154,7 +152,6 @@ tier1_contracts:
     use: "Yield strategy template"
 
   - repo: morpho-org/vault-v2
-    path: contracts/lib/vault-v2
     license: GPL-2.0-or-later
     class: copyleft
     modules: [MetaMorpho-style vault]
@@ -162,7 +159,6 @@ tier1_contracts:
     use: "Curated vault / allocator patterns"
 
   - repo: sparkdotfi/spark-psm
-    path: contracts/lib/spark-psm
     license: AGPL-3.0
     class: copyleft
     modules: [Peg Stability Module]
@@ -170,14 +166,12 @@ tier1_contracts:
     use: "Stablecoin peg defense"
 
   - repo: gmx-io/gmx-contracts
-    path: contracts/lib/gmx-contracts
     license: MIT
     class: permissive
     modules: [Perp/GLP references, oracle adapters]
     tier: T1
 
   - repo: reserve-protocol/* (reserve-index-dtf, trusted-fillers, reserve-governor)
-    path: contracts/lib/reserve-index-dtf, contracts/lib/trusted-fillers, contracts/lib/reserve-governor
     license: MIT
     class: permissive
     modules: [Index DTFs, CoW fillers, governor]
@@ -185,7 +179,6 @@ tier1_contracts:
     use: "Index baskets + governance + CoW swap integration"
 
   - repo: euler-xyz/euler-price-oracle
-    path: contracts/lib/euler-price-oracle
     license: GPL-2.0-or-later
     class: copyleft
     modules: [ERC-7726 price oracle abstraction]
@@ -193,14 +186,12 @@ tier1_contracts:
     use: "Fail-closed oracle pattern"
 
   - repo: PaulRBerg/prb-math
-    path: contracts/lib/prb-math
     license: MIT
     class: permissive
     modules: [fixed-point math]
     tier: T1
 
   - repo: pcaversaccio/createx
-    path: contracts/lib/createx
     license: AGPL-3.0
     class: copyleft
     modules: [CREATE2/CREATE3 deployer]
@@ -208,7 +199,6 @@ tier1_contracts:
     use: "Deterministic cross-chain deploys"
 
   - repo: foundry-rs/forge-std
-    path: contracts/lib/forge-std
     license: MIT OR Apache-2.0
     class: permissive
     modules: [test/script toolkit]
@@ -217,20 +207,20 @@ tier1_contracts:
 
 tier2_frontend:
   - repo: defi4refi/rooted-finance frontend
-    path: ~/CascadeProjects/rooted-finance/frontend
+    url: https://github.com/defi4refi/rooted-finance/tree/main/frontend
     license: AGPL-3.0
     class: copyleft
     modules: [React19+Vite7+wagmi2+Tailwind4 scaffold, bond/stake/treasury/referral modules, ABIs as const]
     tier: T2
-    use: "T2 template — clone, rebrand via OKLCH tokens, drop unused modules"
+    use: "T2 module source — graft components/hooks for the ask; never clone wholesale"
   - repo: defi4refi/regen-atlas
-    path: ~/Documents/docker/regen-atlas
+    url: https://github.com/defi4refi/regen-atlas
     license: MIT
     class: permissive
     tier: T2
     use: "Map/atlas UI patterns"
   - repo: defi4refi/village-os
-    path: ~/Documents/docker/village-os
+    url: https://github.com/defi4refi/village-os
     license: MIT
     class: permissive
     tier: T2
@@ -238,13 +228,13 @@ tier2_frontend:
 
 tier3_modules:
   - repo: Rooted monorepo
-    path: ~/Documents/Rooted
+    url: https://github.com/defi4refi/Rooted
     license: AGPL-3.0
     class: copyleft
     tier: T3
     use: "Workers, lexicons, appreciation pipeline (license-report.json already exists)"
   - repo: rooted-wallet-extension
-    path: ~/rooted-wallet-extension
+    url: https://github.com/defi4refi/rooted-wallet-extension
     license: none-on-disk
     class: copyleft
     tier: T3
@@ -252,8 +242,9 @@ tier3_modules:
     notes: "No LICENSE file — owned internal code; add AGPL header on reuse or keep private."
 
 gapfillers:
-  # Candidate external repos — clone to /root/defi4refi/templates/ on VPS on demand;
-  # add license line before first use.
+  # Candidate external repos — vendored per-build via submodule/sparse checkout
+  # at the upstream URL implied by `repo:` (github.com/<repo>). Nothing is
+  # pre-cloned on the VPS.
   - repo: allo-protocol/allo-v2
     license: AGPL-3.0
     class: copyleft
