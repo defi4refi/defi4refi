@@ -1,110 +1,72 @@
-# defi4refi lead pipeline
+# defi4refi
 
-ClickHouse-backed lead engine: discover → resolve → enrich → score → queue → outreach.
+**Free, open-source protocol engineering for ReFi and public-goods teams.**
 
-**Funnel**: X/Twitter + outreach channels →
-[github.com/TerexitariusStomp](https://github.com/TerexitariusStomp) (the studio's
-landing page) → **submit an idea** via the
-[apply-for-build issue template](.github/ISSUE_TEMPLATE/apply-for-build.md)
-(see [APPLY.md](APPLY.md)) or **join the community** at
-[t.me/defi4refi](https://t.me/defi4refi).
+Regenerative-finance projects have world-class vision and no engineering
+budget. defi4refi is a public-goods development studio: supporters fund
+the studio, and the studio designs and ships protocol codebases **free**
+to selected teams.
 
-## Current state
+## Want something built?
 
-| Metric | Count |
-|---|---|
-| raw_leads | 292,752 rows / 37+ sources (incl. 1,117 `artizen-s7` projects) |
-| orgs (entity-resolved) | 59,911 |
-| contacts | 39,320 |
-| funding_events | 37,360 |
-| outreach_queue | 975 contact-ready (score≥35, verified contact, not contacted) |
-| signals | 483 fresh triggers (karma/giveth/hypercerts/coingecko diffs) |
-| llm_scores | 287 orgs scored via local Ollama |
+1. **[Submit your idea](https://github.com/defi4refi/defi4refi/issues/new?template=apply-for-build.md)**
+   — open an application issue and tell us what you want built.
+2. **[Join the community](https://t.me/defi4refi)** — discuss, ask
+   questions, follow deliveries.
 
-## Tables
+That's it. Applications are reviewed on a rolling basis.
 
-`raw_leads` · `orgs` · `lead_org_map` · `funding_events` · `contacts` · `org_github` · `signals` · `llm_scores` · `outreach_log` · `suppression` · `drafts` · `replies` · `org_outcomes` · `suppression_auto` · `draft_variant_log` · views: `v_scored`, `outreach_queue`, `channel_perf` (live view over outreach_log+replies)
+## What we build
 
-Learning-schema tables self-provision on any `outreach_agent.py` run — no separate migration step.
+| Tier | Deliverable | Effort |
+|---|---|---|
+| T0 | Design sprint — tokenomics, architecture, threat model, roadmap | ~1 week |
+| T1 | Protocol codebase — token, staking, bonds, treasury, governance | ~2–4 weeks |
+| T2 | dApp frontend — staking/bonds/dashboard with a wallet stack | ~1–2 weeks |
+| T3 | Adjacent modules — coordination, identity, DePIN, cross-chain | scoped |
 
-## Ops — VPS layout (primary)
+## How a build works
 
-The pipeline is VPS-native (openhands-vps, `147.79.71.192`, repo at
-`/root/defi4refi`). Hermes on that box owns messaging + intake builds.
+Every project is built **for you, from your requirements** — there are no
+templates.
 
-- **ClickHouse**: docker `defi4refi-ch`, loopback-only `:8123`,
-  `--restart unless-stopped`, volume `defi4refi-ch-data`.
-- **LLM**: `scripts/.env` sets `LLM_PROVIDER=openai`,
-  `LLM_URL=http://127.0.0.1:8081/v1`, `LLM_MODEL=auto` — freelm-gateway,
-  the same provider Hermes uses (not laptop-dependent).
-- **Systemd (system units on VPS)**: `defi4refi-outreach.timer` (6h cycle),
-  `defi4refi-inbound.service` (:8899 replies webhook).
-- **Hermes**: poll-based intake via `hermes cron` job `defi4refi-intake`
-  every 2h (scans `[APPLY]` issues via `gh` — no public ingress needed);
-  webhook `github-apply` exists for when `hooks.terex.dev` DNS lands;
-  `defi4refi-digest` daily; `defi4refi-governor` weekly.
-- **Builds — GitHub-native, no templates**: each application issue produces
-  a fresh `defi4refi/<project>` repo composed from the applicant's wants.
-  Hermes vendors individual modules from `oss-catalog.yaml` (upstream URLs,
-  fetched per-build — nothing pre-cloned on the VPS), authors the glue in a
-  transient workspace, pushes, and the repo's own GitHub Action
-  (`tools/ci/verify-build.yml` → `.github/workflows/verify-build.yml`) runs
-  `forge build/test` + license + <5% custom-code gates. rooted-finance is a
-  module library, never a template.
+1. You file an application issue describing what you want.
+2. We triage it and create a fresh repository under the
+   `defi4refi` org for your project.
+3. The codebase is composed from production-proven open-source modules —
+   OpenZeppelin, Olympus V3, Uniswap, Bond Protocol, and the contracts
+   powering [rooted-finance](https://github.com/defi4refi/rooted-finance),
+   [abyayala](https://github.com/defi4refi/abyayala), and
+   [regen-bridge](https://github.com/defi4refi/regen-bridge) — glued with
+   a thin layer of project-specific code (target: under 5%).
+4. GitHub Actions on your repo builds, tests, and checks the license and
+   custom-code gates on every push.
+5. You get the repo URL on your issue. Audit-ready, not audited — your
+   team deploys and operates the contracts under your own keys. Testnet
+   only until your own audit and deployment.
 
-## Ops — laptop (read replica / dev)
+## The open-source policy
 
-- ClickHouse `defi4refi-ch` stays as a read replica; `ui/server.py` takes
-  `CH_URL` env (e.g. `CH_URL=http://100.104.37.87:8123` via SSH tunnel:
-  `ssh -L 8123:127.0.0.1:8123 root@147.79.71.192`).
-- Local `defi4refi-*` units are user-level and can be disabled once the
-  VPS is verified.
+- Everything we deliver is open source.
+- We reuse commercially-usable OSS aggressively — permissive, copyleft,
+  and source-available licenses are all fine. `oss-catalog.yaml` is the
+  build menu: every candidate module with its license, obligations, and
+  intended use. See `docs/OSS-LICENSES.md`.
+- Custom code stays under 5% of a delivered codebase — measured in CI.
+  See `docs/CUSTOM-CODE-AUDIT.md`.
 
-Restore from snapshot: see `data/snapshot/RESTORE.md` (POST inserts —
-`--data-binary @-` with the query as a URL param; do NOT mix `--get` +
-`--data-binary`, it silently drops the body).
+## How it's funded
 
-## OSS policy
+Donations go to the studio — donors receive no services (patronage of a
+public good, not a service sale). Channels: Giveth, Octant, Gitcoin
+rounds, direct crypto, and hypercerts minted on each delivered
+engagement.
 
-`oss-catalog.yaml` is the build menu — every reusable repo with license,
-class, obligations, tier. Copyleft and source-available allowed;
-obligations recorded. Custom code <5% everywhere — see
-`docs/OSS-LICENSES.md` + `docs/CUSTOM-CODE-AUDIT.md`.
+## What's in this repo
 
-## Scripts (`scripts/`)
-
-| Script | Role |
-|---|---|
-| `build_leads.py` | original multi-source fetch |
-| `fetch_karma.py` | Karma GAP paginator |
-| `load_extra_sources.py` | github topics, celo, dexscreener, ungc |
-| `load_registries.py` | ProPublica, WorldBank, OpenCollective, grants.gov (+ReliefWeb gated) |
-| `load_bulk.py` | ACNC CSV, Brønnøysund API |
-| `load_scale.py` | **USAspending** env agencies, OC-all, Giveth-all, ProPublica-broad |
-| `load_portfolios.py` | VC portfolio scrapes (JS-gated → needs Firecrawl) |
-| `resolve_entities.py` | union-find entity resolution → orgs/map |
-| `funding_amounts.py` | promote real $ to funding_events |
-| `enrich.py` | website email scrape + github API |
-| `verify_github.py` | MX email verify + github org HTML scrape |
-| `llm_score.py` | Ollama relevance pass → llm_scores |
-| `diff_signals.py` | multi-source weekly diff → signals |
-| `governor.py` | queue-depth check + escalation ladder |
-| `score.sql` / `outreach_queue.sql` | scoring + queue views |
-
-## Cron
-
-```cron
-0 4 * * 1 cd ~/CascadeProjects/defi4refi && python3 scripts/diff_signals.py && python3 scripts/governor.py
-```
-
-## Remaining bulk sources (path to 100k funded)
-
-Blocked/gated today, need retry or manual download:
-- UK Charity Commission register bulk (site 502'd — monthly file)
-- Canada CRA T3010, CORDIS bulk, 360Giving datastore, EU FTS, India NGO Darpan
-- ReliefWeb (needs approved appname), Toucan subgraph (free Graph key), Farcaster (Neynar key)
-- VC portfolio spiders need Firecrawl (JS pages)
-
-## Output
-
-`data/top300.csv` — ranked orgs w/ funding$, recency, LLM regen/need + reason, contacts, why-breakdown.
+This repository also hosts the studio's outreach engine: a
+ClickHouse-backed pipeline that finds ReFi/public-goods teams who might
+need engineering help (292k+ leads from 37+ grant registries, funding
+platforms, and ecosystem sources), scores them, and drafts outreach.
+Internals are documented in `docs/OPS.md` — you don't need any of it to
+apply for a build.
