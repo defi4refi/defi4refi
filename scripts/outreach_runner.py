@@ -63,10 +63,12 @@ if os.path.exists(_env):
             os.environ.setdefault(_k, _v)
 
 # --- config from env ---
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1-8b-tools-32k")
 TOP_N = int(os.environ.get("OUTREACH_TOP_N", "40"))
 MAX_SEND = int(os.environ.get("OUTREACH_MAX_SEND_PER_CHANNEL", "5"))
 INTERVAL = int(os.environ.get("OUTREACH_INTERVAL_MIN", "360"))
+# draft subprocess timeout scales with TOP_N (sequential ~10s/org worst case)
+DRAFT_TIMEOUT = int(os.environ.get("DRAFT_TIMEOUT_SEC", str(max(600, TOP_N * 30))))
+JUDGE_WORKERS = int(os.environ.get("JUDGE_WORKERS", "6"))
 
 CH = os.environ.get("CH_URL", "http://localhost:8123/")
 # LLM_PROVIDER: "ollama" (default) or "openai" (OpenAI-compatible /v1, e.g. freelm)
@@ -111,7 +113,7 @@ def llm(prompt, fmt_json=True, n=200):
 def step_draft():
     print(f"[1/draft] generating up to {TOP_N} drafts...")
     start = time.time()
-    subprocess.run([sys.executable, AGENT, "draft"], cwd=LAB, timeout=600)
+    subprocess.run([sys.executable, AGENT, "draft"], cwd=LAB, timeout=DRAFT_TIMEOUT)
     elapsed = time.time() - start
 
     count = rows_json("SELECT count() FROM defi4refi.drafts WHERE length(body) > 10 AND approved = 0")[0]["count()"]
@@ -133,10 +135,9 @@ def step_approve():
         print("  no pending drafts")
         return
 
-    approved = 0
-    skipped = 0
-    for d in pending[:TOP_N * 2]:  # safety cap
-        # Quality check: LLM judges whether the draft is worth sending
+    from concurrent.futures import ThreadPoolExecutor
+
+    def judge(d):
         prompt = f"""You are reviewing an outreach draft. Decide if it's worth sending.
 The draft targets a real organization with real funding. A good draft: specific to the org,
 mentions something real about them, offers genuine value, not spam-like.
@@ -148,20 +149,21 @@ Channel: {d['channel']} @ {d['contact']}
 Open line: {d['open_line']}
 Body: {d['body']}
 """
-        resp = llm(prompt, n=80)
         try:
-            j = json.loads(resp)
-            if j.get("send"):
-                q("ALTER TABLE defi4refi.drafts UPDATE approved = 1 WHERE org_id = '{}' SETTINGS mutations_sync = 1".format(d["org_id"]))
-                approved += 1
-            else:
-                skipped += 1
+            return d["org_id"], bool(json.loads(llm(prompt, n=80)).get("send"))
         except Exception:
-            # If LLM can't decide, approve anyway (better to send than stall)
-            q("ALTER TABLE defi4refi.drafts UPDATE approved = 1 WHERE org_id = '{}' SETTINGS mutations_sync = 1".format(d["org_id"]))
-            approved += 1
+            return d["org_id"], True  # approve on judge failure rather than stall
 
-    print(f"  approved: {approved}, skipped: {skipped}")
+    batch = pending[:TOP_N * 2]
+    with ThreadPoolExecutor(max_workers=JUDGE_WORKERS) as ex:
+        verdicts = list(ex.map(judge, batch))
+
+    ok_ids = [oid for oid, send in verdicts if send]
+    skipped = len(verdicts) - len(ok_ids)
+    if ok_ids:
+        ids = ",".join("'{}'".format(i.replace("'", "")) for i in ok_ids)
+        q("ALTER TABLE defi4refi.drafts UPDATE approved = 1 WHERE org_id IN ({}) SETTINGS mutations_sync = 1".format(ids))
+    print(f"  approved: {len(ok_ids)}, skipped: {skipped}")
 
 # ---------- step 3: send ----------
 def step_send():

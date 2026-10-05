@@ -166,9 +166,9 @@ def empirical_channels():
             result.append(ch)
     return result
 
-def pick_channel(contacts):
+def pick_channel(contacts, channels=None):
     """Pick best channel for an org given its contacts, using empirical priority."""
-    channels = empirical_channels()
+    channels = channels or empirical_channels()
     for ch in channels:
         for c in contacts:
             if c["channel"] == ch:
@@ -176,7 +176,9 @@ def pick_channel(contacts):
     return None, None
 
 # ---- 1. DRAFT: A/B variants + dynamic channel priority ----
-def draft(top_n=40):
+def draft(top_n=None):
+    top_n = top_n or int(os.environ.get("OUTREACH_TOP_N", "40"))
+    workers = int(os.environ.get("DRAFT_WORKERS", "6"))
     orgs = rows(f"""SELECT v.org_id, v.canonical_name, v.funding_usd, v.days_since_funded,
         v.sources, l.reason AS llm_reason
         FROM defi4refi.v_scored v
@@ -189,13 +191,14 @@ def draft(top_n=40):
           AND v.org_id NOT IN (SELECT org_id FROM defi4refi.suppression)
           AND v.org_id NOT IN (SELECT org_id FROM defi4refi.suppression_auto)
         ORDER BY (v.sources LIKE '%artizen%') DESC, v.score DESC LIMIT {top_n}""")
-    print(f"drafting for {len(orgs)} orgs")
-    batch = []
-    for o in orgs:
+    print(f"drafting for {len(orgs)} orgs ({workers} workers)")
+    channel_order = empirical_channels()  # computed once — was queried per-org
+
+    def build(o):
         contacts = rows(f"SELECT channel, value FROM defi4refi.contacts WHERE org_id='{o['org_id']}'")
-        ch, val = pick_channel(contacts)
+        ch, val = pick_channel(contacts, channel_order)
         if not ch:
-            continue
+            return None
         reason = (o.get("llm_reason") or "")[:200]
         artizen = "artizen" in (o.get("sources") or "")
         prompt = f"""You are 'defi4refi' — a free, open-source dev studio for ReFi/public-goods teams —
@@ -234,20 +237,25 @@ Channel: {CH_PATH.get(ch, ch)}"""
                 {"open_line": f"Hey {o['canonical_name']} — saw your work in the ReFi space",
                  "body": "defi4refi ships free open-source protocol builds for public-goods teams. Apply via github.com/TerexitariusStomp or join t.me/defi4refi."},
             ]
-        # pick variant A as the one to send (variant B is held for A/B comparison)
-        selected = variants[0]
-        withheld = variants[1]
-        # insert draft (single row, the one to send)
-        batch.append({"org_id": o["org_id"], "channel": ch, "contact": val,
-                      "open_line": selected["open_line"], "body": selected["body"]})
-        # insert variant log (both variants recorded, selected=A; sent_at defaults to now())
-        ins_var([{"org_id": o["org_id"], "variant": 0, "open_line": selected["open_line"],
-                  "body": selected["body"], "selected": True},
-                 {"org_id": o["org_id"], "variant": 1, "open_line": withheld["open_line"],
-                  "body": withheld["body"], "selected": False}])
-        # also insert to drafts table for the send pipeline
-        ins([{"org_id": o["org_id"], "channel": ch, "contact": val,
-              "open_line": selected["open_line"], "body": selected["body"]}])
+        return o, ch, val, variants
+
+    from concurrent.futures import ThreadPoolExecutor
+    batch = []
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        for res in ex.map(build, orgs):
+            if not res:
+                continue
+            o, ch, val, variants = res
+            # pick variant A as the one to send (variant B is held for A/B comparison)
+            selected, withheld = variants
+            batch.append({"org_id": o["org_id"], "channel": ch, "contact": val,
+                          "open_line": selected["open_line"], "body": selected["body"]})
+            ins_var([{"org_id": o["org_id"], "variant": 0, "open_line": selected["open_line"],
+                      "body": selected["body"], "selected": True},
+                     {"org_id": o["org_id"], "variant": 1, "open_line": withheld["open_line"],
+                      "body": withheld["body"], "selected": False}])
+            ins([{"org_id": o["org_id"], "channel": ch, "contact": val,
+                  "open_line": selected["open_line"], "body": selected["body"]}])
     print(f"drafted {len(batch)} orgs with A/B variants")
 
 # ---- 2. TRIAGE: classify replies + record outcomes ----
