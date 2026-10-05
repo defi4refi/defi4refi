@@ -7,3 +7,4 @@ __pycache__/
 .venv/
 contacts.jsonl.gz
 snapshot-private/
+!scripts/.env.example

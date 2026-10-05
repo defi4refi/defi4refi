@@ -3,10 +3,19 @@
 Bluesky: @atproto-compatible XRPC — post-mention (reply/DM needs session).
 Needs env: BSKY_HANDLE, BSKY_APP_PASSWORD (create at bsky.app -> Settings -> App Passwords).
 Inbound: POST /inbound on :8899 -> replies table (Postal inbound route target)."""
-import json, os, urllib.request, urllib.parse, threading
+import json, os, re, urllib.request, urllib.parse, threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 CH = "http://localhost:8123/"
+
+# load scripts/.env (gitignored) if present
+_env = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+if os.path.exists(_env):
+    for _line in open(_env):
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _v = _line.split("=", 1)
+            os.environ.setdefault(_k, _v)
 
 def q(sql, data=None):
     r = urllib.request.urlopen(urllib.request.Request(
@@ -30,7 +39,12 @@ def bsky_send():
     token, did = sess["accessJwt"], sess["did"]
     sent = 0
     for d in rows_json("SELECT org_id, contact, open_line, body FROM defi4refi.drafts WHERE channel='bluesky' AND approved=1 AND org_id NOT IN (SELECT org_id FROM defi4refi.outreach_log)"):
+        # normalize: stored values may be @handle, bare handle, or bsky.app URL
         target = d["contact"].lstrip("@")
+        if "bsky.app/profile/" in target:
+            target = target.split("bsky.app/profile/")[-1].strip("/")
+        if not re.match(r"^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$", target):
+            print("bsky skip bad handle:", d["contact"]); continue
         text = f"@{target} {d['open_line']} {d['body']}"[:290]
         # find handle facet for mention
         try:
@@ -44,7 +58,7 @@ def bsky_send():
                 headers={"Content-Type": "application/json", "Authorization": "Bearer " + token})
             urllib.request.urlopen(req, timeout=15)
             q("INSERT INTO defi4refi.outreach_log FORMAT JSONEachRow",
-              data=json.dumps({"org_id": d["org_id"], "channel": "bluesky", "value": target, "sent_at": "now()", "status": "sent"}))
+              data=json.dumps({"org_id": d["org_id"], "channel": "bluesky", "value": target, "status": "sent"}))
             sent += 1
         except Exception as e:
             print("bsky send fail", target, str(e)[:80])

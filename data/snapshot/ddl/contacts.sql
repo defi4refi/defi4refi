@@ -4,7 +4,7 @@ CREATE TABLE defi4refi.contacts
     `channel` String,
     `value` String,
     `verified` UInt8 DEFAULT 0,
-    `source` String DEFAULT \'\',
+    `source` String DEFAULT '',
     `captured_at` DateTime DEFAULT now(),
     `evidence_url` String,
     `person_name` String,

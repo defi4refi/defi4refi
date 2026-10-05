@@ -2,21 +2,47 @@
 
 ClickHouse-backed lead engine: discover → resolve → enrich → score → queue → outreach.
 
+**Funnel**: X/Twitter + outreach channels →
+[github.com/TerexitariusStomp](https://github.com/TerexitariusStomp) (the studio's
+landing page) → **submit an idea** via the
+[apply-for-build issue template](.github/ISSUE_TEMPLATE/apply-for-build.md)
+(see [APPLY.md](APPLY.md)) or **join the community** at
+[t.me/defi4refi](https://t.me/defi4refi).
+
 ## Current state
 
 | Metric | Count |
 |---|---|
-| raw_leads | 92,816 rows / 37 sources |
-| orgs (entity-resolved) | 38,596 (571+ cross-source clusters) |
-| orgs with funding $ | 12,108 (USASpending, OP cycles, Filecoin ProPGF, 990s, Giveth, World Bank, OC, hypercert sales, self-reported) |
-| contacts | 2,723 (898 MX-verified emails, 1,135 twitter, 232 github) |
-| outreach_queue | 344 contact-ready (score≥35, verified contact, not contacted) |
+| raw_leads | 292,752 rows / 37+ sources (incl. 1,117 `artizen-s7` projects) |
+| orgs (entity-resolved) | 59,911 |
+| contacts | 39,320 |
+| funding_events | 37,360 |
+| outreach_queue | 975 contact-ready (score≥35, verified contact, not contacted) |
 | signals | 483 fresh triggers (karma/giveth/hypercerts/coingecko diffs) |
-| llm_scores | ~273 orgs scored via laptop Ollama |
+| llm_scores | 287 orgs scored via local Ollama |
 
 ## Tables
 
-`raw_leads` · `orgs` · `lead_org_map` · `funding_events` · `contacts` · `org_github` · `signals` · `llm_scores` · `outreach_log` · `suppression` · views: `v_scored`, `outreach_queue`
+`raw_leads` · `orgs` · `lead_org_map` · `funding_events` · `contacts` · `org_github` · `signals` · `llm_scores` · `outreach_log` · `suppression` · `drafts` · `replies` · `org_outcomes` · `suppression_auto` · `draft_variant_log` · views: `v_scored`, `outreach_queue`, `channel_perf` (live view over outreach_log+replies)
+
+Learning-schema tables self-provision on any `outreach_agent.py` run — no separate migration step.
+
+## Ops
+
+- **ClickHouse**: `docker start defi4refi-ch` (container `defi4refi-ch`,
+  image `clickhouse/clickhouse-server:25.7`, host port 127.0.0.1:8123).
+  Default user is open inside the container — port is loopback-only.
+- **Ollama**: `systemctl --user status ollama` (serves `llama3.1-8b-tools-32k`).
+- **Outreach cycle**: `defi4refi-outreach.timer` — `outreach_runner.py once`
+  every 6h (draft → LLM-approve → send → triage → learn → report).
+- **Inbound webhook**: `defi4refi-inbound.service` — replies endpoint on :8899.
+- **Credentials**: copy `scripts/.env.example` → `scripts/.env` (gitignored).
+  Unconfigured channels are skipped; pipeline still drafts + logs `would_send`.
+- **Lead browser**: `python3 ui/server.py` → http://localhost:8471 (needs ClickHouse).
+
+Restore from snapshot: see `data/snapshot/RESTORE.md` (POST inserts —
+`--data-binary @-` with the query as a URL param; do NOT mix `--get` +
+`--data-binary`, it silently drops the body).
 
 ## Scripts (`scripts/`)
 
